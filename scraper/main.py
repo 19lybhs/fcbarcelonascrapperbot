@@ -151,7 +151,7 @@ def main() -> int:
                         
                     delta_hours = (dt - now).total_seconds() / 3600.0
                     # Permitir delta negativo (-4h) por si ESPN tarda unos minutos en cambiar el estado a live
-                    if -1<= delta_hours <= 6:
+                    if -4<= delta_hours <= 2.1:
                         future_matches.append((delta_hours, m_id, m))
             
             if future_matches:
@@ -162,7 +162,7 @@ def main() -> int:
         if not target_match:
             # Restaurar logs por si acaso antes de salir
             logging.getLogger("scraper.normalizer").setLevel(logging.INFO)
-            logger.info("⚽ No hay partidos en vivo ni programados en las próximas 8 horas. Apagando bot hasta el próximo cron.")
+            logger.info("⚽ No hay partidos en vivo ni programados en las próximas 2 horas. Apagando bot hasta el próximo cron.")
             break
 
         status = target_match.get("status")
