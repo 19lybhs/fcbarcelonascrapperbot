@@ -1,1 +1,1 @@
-
+[![Scraper FC Barcelona → Firestore](https://github.com/19lybhs/fcbarcelonascrapperbot/actions/workflows/scraper.yml/badge.svg)](https://github.com/19lybhs/fcbarcelonascrapperbot/actions/workflows/scraper.yml)
