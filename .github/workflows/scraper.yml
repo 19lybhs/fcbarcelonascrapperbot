@@ -1,0 +1,73 @@
+name: Scraper FC Barcelona → Firestore
+
+on:
+  schedule:
+    # 11:00 UTC (13:00 en España verano) y 16:15 UTC (18:15 en España verano)
+    - cron: '0 11 * * *'
+    - cron: '15 16 * * *'
+
+  # Permitir ejecución manual desde GitHub UI
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Ejecutar en modo dry-run (no escribe en Firestore)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      source:
+        description: 'Fuente de datos'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - 'all'
+          - 'espn'
+          - 'marca'
+
+jobs:
+  scrape-and-upload:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: 🐍 Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 📦 Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: 🔑 Reconstruir credenciales de Firebase
+        env:
+          FIREBASE_SERVICE_ACCOUNT_KEY_BASE64: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+        run: |
+          echo "$FIREBASE_SERVICE_ACCOUNT_KEY_BASE64" | base64 --decode > serviceAccountKey.json
+          echo "✅ serviceAccountKey.json reconstruido desde secreto"
+
+      - name: 🤖 Ejecutar scraper
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ''  # No necesario, usamos el archivo
+        run: |
+          DRY_RUN_FLAG=""
+          SOURCE_FLAG=""
+
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            DRY_RUN_FLAG="--dry-run"
+          fi
+
+          if [ -n "${{ github.event.inputs.source }}" ]; then
+            SOURCE_FLAG="--source ${{ github.event.inputs.source }}"
+          fi
+
+          python -m scraper.main $DRY_RUN_FLAG $SOURCE_FLAG
+
+      - name: 🧹 Limpiar credenciales
+        if: always()
+        run: rm -f serviceAccountKey.json
