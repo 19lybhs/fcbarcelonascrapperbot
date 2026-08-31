@@ -142,7 +142,8 @@ def main() -> int:
                         dt = dt.replace(tzinfo=timezone.utc)
                         
                     delta_hours = (dt - now).total_seconds() / 3600.0
-                    if 0 <= delta_hours <= 8:
+                    # Permitir delta negativo (-4h) por si ESPN tarda unos minutos en cambiar el estado a live
+                    if -4 <= delta_hours <= 8:
                         future_matches.append((delta_hours, m_id, m))
             
             if future_matches:
@@ -164,6 +165,9 @@ def main() -> int:
             if sleep_secs > 0:
                 logger.info("⏳ Próximo partido a las %s. Durmiendo %.1f minutos...", match_time.strftime("%H:%M UTC"), sleep_secs / 60)
                 time.sleep(sleep_secs)
+            else:
+                logger.info("⚠️ El partido debería haber empezado, pero ESPN aún dice 'scheduled'. Esperando 5 minutos...")
+                time.sleep(300)
                 
         elif status == "live":
             mins_elapsed = (now - match_time).total_seconds() / 60.0
