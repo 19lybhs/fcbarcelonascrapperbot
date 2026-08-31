@@ -1,10 +1,14 @@
 name: Scraper FC Barcelona → Firestore
 
+# Evitar que se ejecuten dos bots a la vez
+concurrency:
+  group: scraper-live-tracking
+  cancel-in-progress: false
+
 on:
   schedule:
-    # 11:00 UTC (13:00 en España verano) y 16:15 UTC (18:15 en España verano)
-    - cron: '0 11 * * *'
-    - cron: '15 16 * * *'
+    # 13:00, 15:00, 17:00, 19:00, 21:00 en hora de España (verano)
+    - cron: '0 11,13,15,17,19 * * *'
 
   # Permitir ejecución manual desde GitHub UI
   workflow_dispatch:
