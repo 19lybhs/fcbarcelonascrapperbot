@@ -237,13 +237,13 @@ def _parse_event(event: dict, league_name: str) -> dict[str, Any] | None:
         "homeTeamId": int(home_team.get("id", 0)),
         "homeTeamTla": home_team.get("team", {}).get("abbreviation", ""),
         "homeTeamLogo": _get_team_logo(home_team),
-        "homeGoals": int(home_team.get("score", 0)) if "score" in home_team else None,
+        "homeGoals": home_goals,
 
         "awayTeam": away_team.get("team", {}).get("displayName", "Unknown"),
-        "awayTeamId": int(away_team.get("id", 0)),
+        "awayTeamId": int(away_team.get("id", 0)) if away_team.get("id") else 0,
         "awayTeamTla": away_team.get("team", {}).get("abbreviation", ""),
         "awayTeamLogo": _get_team_logo(away_team),
-        "awayGoals": int(away_team.get("score", 0)) if "score" in away_team else None,
+        "awayGoals": away_goals,
 
         "competition": competition_slug,
         "competitionLogo": competition_logo,
