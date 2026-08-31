@@ -120,6 +120,14 @@ def main() -> int:
     import time
     import random
 
+    # Variables para detectar goles
+    prev_home_goals = None
+    prev_away_goals = None
+
+    # Silenciar logs ruidosos durante el bucle en vivo
+    logging.getLogger("scraper.normalizer").setLevel(logging.WARNING)
+    logging.getLogger("scraper.firestore_client").setLevel(logging.WARNING)
+
     while True:
         now = datetime.now(timezone.utc)
         target_match = None
@@ -143,7 +151,7 @@ def main() -> int:
                         
                     delta_hours = (dt - now).total_seconds() / 3600.0
                     # Permitir delta negativo (-4h) por si ESPN tarda unos minutos en cambiar el estado a live
-                    if -4 <= delta_hours <= 8:
+                    if -1<= delta_hours <= 6:
                         future_matches.append((delta_hours, m_id, m))
             
             if future_matches:
@@ -152,6 +160,8 @@ def main() -> int:
                 target_match = future_matches[0][2]
 
         if not target_match:
+            # Restaurar logs por si acaso antes de salir
+            logging.getLogger("scraper.normalizer").setLevel(logging.INFO)
             logger.info("⚽ No hay partidos en vivo ni programados en las próximas 8 horas. Apagando bot hasta el próximo cron.")
             break
 
@@ -163,29 +173,28 @@ def main() -> int:
         if status == "scheduled":
             sleep_secs = (match_time - now).total_seconds()
             if sleep_secs > 0:
-                logger.info("⏳ Próximo partido a las %s. Durmiendo %.1f minutos...", match_time.strftime("%H:%M UTC"), sleep_secs / 60)
+                logger.info("Próximo partido a las %s. Durmiendo %.1f minutos...", match_time.strftime("%H:%M UTC"), sleep_secs / 60)
                 time.sleep(sleep_secs)
             else:
-                logger.info("⚠️ El partido debería haber empezado, pero ESPN aún dice 'scheduled'. Esperando 5 minutos...")
+                logger.info("El partido debería haber empezado, pero ESPN aún dice 'scheduled'. Esperando 5 minutos...")
                 time.sleep(300)
                 
         elif status == "live":
             mins_elapsed = (now - match_time).total_seconds() / 60.0
             
-            if mins_elapsed >= 110:
-                wait_mins = 5
-                logger.info("🔥 Minuto +110. Actualizando cada 5 minutos exactos.")
-            else:
-                wait_mins = random.uniform(4, 12)
-                logger.info("🏃 Partido en juego (min ~%.0f). Próxima actualización en %.1f minutos...", mins_elapsed, wait_mins)
-                
+            # Consultar siempre cada 1 minuto exactamente
+            wait_mins = 1
+            
+            logger.info("Minuto ~%.0f. Próxima lectura en %d min...", mins_elapsed, wait_mins)
             time.sleep(wait_mins * 60)
 
-        # Volver a descargar datos
-        logger.info("🔄 Descargando datos actualizados...")
-        
+        # Volver a descargar datos de forma silenciosa
         espn_matches = []
         marca_matches = []
+        
+        # Silenciar los logs de ESPN durante el bucle
+        logging.getLogger("scraper.sources.espn").setLevel(logging.WARNING)
+        
         if args.source in ("all", "espn"):
             espn_matches = espn.fetch_schedule()
         if args.source in ("all", "marca"):
@@ -196,14 +205,30 @@ def main() -> int:
         # Subir SOLO los campos de estado y goles del partido que estamos siguiendo
         if target_match_id in merged_matches:
             updated_match = merged_matches[target_match_id]
+            curr_home = updated_match.get("homeGoals")
+            curr_away = updated_match.get("awayGoals")
+            
+            # Detectar si hay gol
+            if prev_home_goals is not None and curr_home is not None and curr_home > prev_home_goals:
+                logger.info("¡GOOOOOOL DEL %s!", updated_match.get("homeTeam").upper())
+            if prev_away_goals is not None and curr_away is not None and curr_away > prev_away_goals:
+                logger.info("¡GOOOOOOL DEL %s!", updated_match.get("awayTeam").upper())
+                
+            if curr_home is not None and curr_away is not None:
+                logger.info("🏟️ MARCADOR: %s %d - %d %s", 
+                            updated_match.get("homeTeam"), curr_home, 
+                            curr_away, updated_match.get("awayTeam"))
+                            
+            prev_home_goals = curr_home
+            prev_away_goals = curr_away
+
             minimal_update = {
                 target_match_id: {
                     "status": updated_match.get("status"),
-                    "homeGoals": updated_match.get("homeGoals"),
-                    "awayGoals": updated_match.get("awayGoals")
+                    "homeGoals": curr_home,
+                    "awayGoals": curr_away
                 }
             }
-            logger.info("📝 Actualizando SOLO goles y estado del partido en vivo...")
             upload_matches(minimal_update, dry_run=args.dry_run)
 
     return 0
