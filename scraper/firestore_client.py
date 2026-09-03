@@ -122,16 +122,21 @@ def upload_matches(
     db = get_firestore_client()
     collection_ref = db.collection(COLLECTION_NAME)
 
-    # Leer los documentos existentes para proteger el campo 'round' (jornada)
+    # Leer los documentos existentes para proteger el campo 'round' (jornada).
+    # Solo hace falta si de verdad vamos a escribir 'round' en algún partido:
+    # las actualizaciones mínimas del bucle de seguimiento en vivo (cada 1
+    # minuto, solo status/goles) nunca lo incluyen, así que nos ahorramos
+    # leer la colección entera en cada una de esas subidas.
     existing_rounds = {}
-    try:
-        # stream() cuesta muy pocas lecturas (<50), ideal para proteger datos manuales
-        for doc in collection_ref.stream():
-            d = doc.to_dict()
-            if d and d.get("round") is not None:
-                existing_rounds[doc.id] = d.get("round")
-    except Exception as e:
-        logger.warning("No se pudieron leer las jornadas existentes: %s", e)
+    if any("round" in data for data in matches.values()):
+        try:
+            # stream() cuesta muy pocas lecturas (<50), ideal para proteger datos manuales
+            for doc in collection_ref.stream():
+                d = doc.to_dict()
+                if d and d.get("round") is not None:
+                    existing_rounds[doc.id] = d.get("round")
+        except Exception as e:
+            logger.warning("No se pudieron leer las jornadas existentes: %s", e)
 
     # Procesar en batches
     match_items = list(matches.items())

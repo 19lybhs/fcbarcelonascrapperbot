@@ -80,7 +80,7 @@ def _get_page_html(url: str) -> str | None:
     # Intento 2: requests directo (funciona si no hay Cloudflare activo)
     try:
         response = requests.get(
-            MARCA_CALENDAR_URL, headers=headers, timeout=REQUEST_TIMEOUT
+            url, headers=headers, timeout=REQUEST_TIMEOUT
         )
         response.raise_for_status()
         logger.info("Marca: página obtenida con requests (status %d)", response.status_code)

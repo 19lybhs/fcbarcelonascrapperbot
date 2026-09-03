@@ -1,9 +1,12 @@
 name: Scraper FC Barcelona → Firestore
 
-# Evitar que se ejecuten dos bots a la vez
+# Evitar que se ejecuten dos bots a la vez. cancel-in-progress: true evita que
+# un run anterior (que puede quedarse horas en el bucle de seguimiento en vivo)
+# bloquee/descarte los siguientes ticks del cron: el run nuevo cancela al viejo
+# y retoma el seguimiento del partido en vivo al instante.
 concurrency:
   group: scraper-live-tracking
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 on:
   schedule:
@@ -34,6 +37,10 @@ on:
 jobs:
   scrape-and-upload:
     runs-on: ubuntu-latest
+    # Límite de seguridad: cubre el peor caso (espera pre-partido de hasta
+    # ~2.1h + partido con prórroga/penaltis + margen) sin dejar el job colgado
+    # indefinidamente si algo se atasca.
+    timeout-minutes: 180
 
     steps:
       - name: 📥 Checkout del repositorio

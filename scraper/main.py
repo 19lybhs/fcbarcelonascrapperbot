@@ -188,18 +188,19 @@ def main() -> int:
             logger.info("Minuto ~%.0f. Próxima lectura en %d min...", mins_elapsed, wait_mins)
             time.sleep(wait_mins * 60)
 
-        # Volver a descargar datos de forma silenciosa
+        # Volver a descargar datos de forma silenciosa. Marca no aporta
+        # marcador en vivo (solo jornada/ronda para el resumen inicial), así
+        # que dentro del bucle basta con re-consultar ESPN: evita 2 peticiones
+        # HTTP innecesarias (con cloudscraper, más lentas) en cada minuto de
+        # seguimiento, que puede repetirse durante 90+ minutos por partido.
         espn_matches = []
-        marca_matches = []
-        
+
         # Silenciar los logs de ESPN durante el bucle
         logging.getLogger("scraper.sources.espn").setLevel(logging.WARNING)
-        
+
         if args.source in ("all", "espn"):
             espn_matches = espn.fetch_schedule()
-        if args.source in ("all", "marca"):
-            marca_matches = marca.fetch_schedule()
-            
+
         merged_matches = normalize_and_merge(espn_matches, marca_matches)
         
         # Subir SOLO los campos de estado y goles del partido que estamos siguiendo

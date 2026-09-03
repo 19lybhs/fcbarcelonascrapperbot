@@ -9,6 +9,7 @@ Endpoint principal:
 """
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -71,19 +72,31 @@ def fetch_schedule(season: int | None = None) -> list[dict[str, Any]]:
         # La temporada de fútbol comienza en agosto
         season = now.year if now.month >= 8 else now.year - 1
 
-    for league_slug, league_name in LEAGUES.items():
+    def _fetch(item: tuple[str, str]) -> tuple[str, str, list[dict[str, Any]] | Exception]:
+        league_slug, league_name = item
         try:
-            matches = _fetch_league_schedule(league_slug, league_name, season)
-            all_matches.extend(matches)
-            if matches:
-                logger.info(
-                    "ESPN [%s %d-%d]: %d partidos obtenidos",
-                    league_name, season, season + 1, len(matches),
-                )
-        except Exception:
+            return league_slug, league_name, _fetch_league_schedule(league_slug, league_name, season)
+        except Exception as exc:
+            return league_slug, league_name, exc
+
+    # Las 6 competiciones son peticiones HTTP independientes: se piden en
+    # paralelo para no pagar la latencia de red 6 veces de forma secuencial.
+    with ThreadPoolExecutor(max_workers=len(LEAGUES)) as executor:
+        results = list(executor.map(_fetch, LEAGUES.items()))
+
+    for league_slug, league_name, matches in results:
+        if isinstance(matches, Exception):
             logger.exception(
                 "Error obteniendo datos de ESPN para %s temporada %d",
-                league_name, season,
+                league_name, season, exc_info=matches,
+            )
+            continue
+
+        all_matches.extend(matches)
+        if matches:
+            logger.info(
+                "ESPN [%s %d-%d]: %d partidos obtenidos",
+                league_name, season, season + 1, len(matches),
             )
 
     logger.info("ESPN total: %d partidos obtenidos", len(all_matches))
