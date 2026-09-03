@@ -10,8 +10,16 @@ concurrency:
 
 on:
   schedule:
-    # 13:00, 15:00, 17:00, 19:00, 21:00 en hora de España (verano)
-    - cron: '13 11,13,15,17,19 * * *'
+    # GitHub Actions puede retrasar o directamente perder eventos "schedule"
+    # bajo carga (documentado por GitHub, no es un bug de este repo): con solo
+    # 5 horarios fijos al día, el historial real mostraba que únicamente 2 de
+    # los 5 llegaban a dispararse, con retrasos de 30min a ~2h. La mitigación
+    # es lanzarlo mucho más a menudo (cada 15 min, ~96 veces/día) para que,
+    # aunque GitHub siga perdiendo eventos, casi siempre haya alguno cerca de
+    # cada horario relevante. Cada tick "vacío" (sin partido próximo/en vivo)
+    # cuesta segundos porque el script sale enseguida (ver main.py). Se evitan
+    # los minutos :00/:15/:30/:45 (los de mayor carga en GitHub) con offset +4.
+    - cron: '4,19,34,49 * * * *'
 
   # Permitir ejecución manual desde GitHub UI
   workflow_dispatch:
