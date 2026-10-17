@@ -1,0 +1,81 @@
+diff --git a/scraper/main.py b/scraper/main.py
+index ef494ee..8d9f062 100644
+--- a/scraper/main.py
++++ b/scraper/main.py
+@@ -200,6 +200,12 @@ def main() -> int:
+ 
+         if args.source in ("all", "espn"):
+             espn_matches = espn.fetch_schedule()
++            if not espn_matches:
++                # ESPN falló (o devolvió vacío) en esta lectura: conservamos
++                # los últimos datos buenos en vez de apagar el bot a mitad
++                # de partido por un fallo puntual de red.
++                logger.warning("ESPN no devolvió partidos; se reintenta en el siguiente ciclo.")
++                continue
+ 
+         merged_matches = normalize_and_merge(espn_matches, marca_matches)
+         
+diff --git a/scraper/normalizer.py b/scraper/normalizer.py
+index 1d3d334..e67bfb0 100644
+--- a/scraper/normalizer.py
++++ b/scraper/normalizer.py
+@@ -6,7 +6,9 @@ no se dupliquen en Firestore. El ID se basa en la fecha y el rival,
+ así cualquier fuente que extraiga el mismo partido producirá el mismo ID.
+ """
+ 
++import json
+ import logging
++import os
+ import re
+ import unicodedata
+ from datetime import datetime
+@@ -14,6 +16,34 @@ from typing import Any
+ 
+ logger = logging.getLogger(__name__)
+ 
++# Correcciones manuales de hora cuando ESPN publica una hora errónea.
++# Formato: {"<match_id>": "<fecha ISO 8601 con zona horaria>"}
++OVERRIDES_PATH = os.path.join(os.path.dirname(__file__), "overrides.json")
++
++
++def apply_overrides(matches: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
++    """Sustituye scheduledAt por la hora indicada en overrides.json."""
++    try:
++        with open(OVERRIDES_PATH, encoding="utf-8") as f:
++            overrides = json.load(f)
++    except FileNotFoundError:
++        return matches
++    except (json.JSONDecodeError, OSError):
++        logger.warning("overrides.json ilegible; se ignoran los overrides")
++        return matches
++
++    for match_id, iso_date in overrides.items():
++        match = matches.get(match_id)
++        if match is None:
++            continue
++        try:
++            match["scheduledAt"] = datetime.fromisoformat(iso_date)
++            logger.info("Override de hora aplicado a %s → %s", match_id, iso_date)
++        except (ValueError, TypeError):
++            logger.warning("Override inválido para %s: %r", match_id, iso_date)
++
++    return matches
++
+ 
+ def normalize_team_name(name: str) -> str:
+     """
+@@ -213,4 +243,4 @@ def normalize_and_merge(
+         marca_new,
+     )
+ 
+-    return all_matches
++    return apply_overrides(all_matches)
+diff --git a/scraper/overrides.json b/scraper/overrides.json
+new file mode 100644
+index 0000000..d9420ff
+--- /dev/null
++++ b/scraper/overrides.json
+@@ -0,0 +1,3 @@
++{
++  "laliga_20261017_vs_real_betis": "2026-10-17T18:30:00+02:00"
++}
