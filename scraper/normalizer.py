@@ -6,13 +6,43 @@ no se dupliquen en Firestore. El ID se basa en la fecha y el rival,
 así cualquier fuente que extraiga el mismo partido producirá el mismo ID.
 """
 
+import json
 import logging
+import os
 import re
 import unicodedata
 from datetime import datetime
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# Correcciones manuales de hora cuando ESPN publica una hora errónea.
+# Formato: {"<match_id>": "<fecha ISO 8601 con zona horaria>"}
+OVERRIDES_PATH = os.path.join(os.path.dirname(__file__), "overrides.json")
+
+
+def apply_overrides(matches: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Sustituye scheduledAt por la hora indicada en overrides.json."""
+    try:
+        with open(OVERRIDES_PATH, encoding="utf-8") as f:
+            overrides = json.load(f)
+    except FileNotFoundError:
+        return matches
+    except (json.JSONDecodeError, OSError):
+        logger.warning("overrides.json ilegible; se ignoran los overrides")
+        return matches
+
+    for match_id, iso_date in overrides.items():
+        match = matches.get(match_id)
+        if match is None:
+            continue
+        try:
+            match["scheduledAt"] = datetime.fromisoformat(iso_date)
+            logger.info("Override de hora aplicado a %s → %s", match_id, iso_date)
+        except (ValueError, TypeError):
+            logger.warning("Override inválido para %s: %r", match_id, iso_date)
+
+    return matches
 
 
 def normalize_team_name(name: str) -> str:
@@ -213,4 +243,4 @@ def normalize_and_merge(
         marca_new,
     )
 
-    return all_matches
+    return apply_overrides(all_matches)

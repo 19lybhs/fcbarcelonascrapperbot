@@ -200,6 +200,12 @@ def main() -> int:
 
         if args.source in ("all", "espn"):
             espn_matches = espn.fetch_schedule()
+            if not espn_matches:
+                # ESPN falló (o devolvió vacío) en esta lectura: conservamos
+                # los últimos datos buenos en vez de apagar el bot a mitad
+                # de partido por un fallo puntual de red.
+                logger.warning("ESPN no devolvió partidos; se reintenta en el siguiente ciclo.")
+                continue
 
         merged_matches = normalize_and_merge(espn_matches, marca_matches)
         
