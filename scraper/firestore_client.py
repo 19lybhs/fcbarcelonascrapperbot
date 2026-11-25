@@ -75,6 +75,10 @@ def _initialize_firebase() -> None:
 
 def get_firestore_client() -> firestore.firestore.Client:
     """Obtiene el cliente de Firestore, inicializando Firebase si es necesario."""
+    if os.environ.get("FIRESTORE_EMULATOR_HOST"):
+        from google.auth.credentials import AnonymousCredentials
+        from google.cloud.firestore import Client
+        return Client(project=os.environ["GCLOUD_PROJECT"], credentials=AnonymousCredentials())
     _initialize_firebase()
     return firestore.client()
 
@@ -180,3 +184,23 @@ def upload_matches(
         COLLECTION_NAME,
     )
     return total_uploaded
+
+
+def save_preview(match_id, fresh):
+    from scraper.preview import merged
+
+    db = get_firestore_client()
+    ref = db.collection(COLLECTION_NAME).document(match_id)
+
+    @firestore.transactional
+    def update(transaction):
+        doc = ref.get(transaction=transaction)
+        data = doc.to_dict() or {}
+        if str(data.get("espnEventId")) != fresh["eventId"]:
+            return
+        old = data.get("preview")
+        result = merged(old, fresh)
+        if result != old:
+            transaction.update(ref, {"preview": result})
+
+    update(db.transaction())
