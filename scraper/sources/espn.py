@@ -114,11 +114,17 @@ def _fetch_league_schedule(
     if season is not None:
         params["season"] = season
 
-    response = requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
-    response.raise_for_status()
-    data = response.json()
-
-    events = data.get("events", [])
+    events_by_id = {}
+    # ESPN distingue calendario de próximos encuentros y resultados disputados.
+    for query in (params, {k: v for k, v in params.items() if k != "fixture"}):
+        try:
+            response = requests.get(url, params=query, timeout=REQUEST_TIMEOUT)
+            response.raise_for_status()
+            for event in response.json()["events"]:
+                events_by_id[str(event["id"])] = event
+        except (requests.RequestException, KeyError, ValueError) as exc:
+            logger.warning("Calendario ESPN incompleto para %s: %s", league_slug, exc)
+    events = events_by_id.values()
     matches = []
 
     for event in events:
@@ -249,13 +255,13 @@ def _parse_event(event: dict, league_name: str) -> dict[str, Any] | None:
 
     match_data = {
         "homeTeam": home_team.get("team", {}).get("displayName", "Unknown"),
-        "homeTeamId": int(home_team.get("id", 0)),
+        "homeTeamId": home_id,
         "homeTeamTla": home_team.get("team", {}).get("abbreviation", ""),
         "homeTeamLogo": _get_team_logo(home_team),
         "homeGoals": home_goals,
 
         "awayTeam": away_team.get("team", {}).get("displayName", "Unknown"),
-        "awayTeamId": int(away_team.get("id", 0)) if away_team.get("id") else 0,
+        "awayTeamId": away_id,
         "awayTeamTla": away_team.get("team", {}).get("abbreviation", ""),
         "awayTeamLogo": _get_team_logo(away_team),
         "awayGoals": away_goals,

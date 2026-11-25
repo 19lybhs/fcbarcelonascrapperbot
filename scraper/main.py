@@ -27,9 +27,10 @@ import logging
 import sys
 from datetime import datetime, timezone
 
+from scraper import preview
 from scraper.sources import espn, marca
 from scraper.normalizer import normalize_and_merge
-from scraper.firestore_client import upload_matches
+from scraper.firestore_client import save_preview, upload_matches
 
 # Configuración de logging
 logging.basicConfig(
@@ -38,6 +39,21 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger("scraper")
+
+
+def refresh_previews(fixtures, documents, dry_run):
+    get = preview.session()
+    for match_id, match in fixtures:
+        try:
+            fresh = preview.build(match, get, datetime.now(timezone.utc))
+            if not dry_run:
+                save_preview(documents.get(fresh["eventId"], match_id), fresh)
+            for tid, team in fresh["teams"].items():
+                logger.info("ESPN partido %s, equipo %s: once %s, %d resultados",
+                            fresh["eventId"], tid, "confirmado" if team["confirmed"] else "pendiente",
+                            len(team.get("recent", [])))
+        except Exception:
+            logger.exception("No se pudo actualizar la previa de %s", match_id)
 
 
 def main() -> int:
@@ -108,6 +124,7 @@ def main() -> int:
 
     event_documents = {}
     uploaded = upload_matches(merged_matches, dry_run=args.dry_run, event_documents=event_documents)
+    refresh_previews(preview.featured(merged_matches), event_documents, args.dry_run)
 
     logger.info("=" * 60)
     logger.info("✅ Finalizado: %d partidos procesados", uploaded)
@@ -174,8 +191,12 @@ def main() -> int:
         if status == "scheduled":
             sleep_secs = (match_time - now).total_seconds()
             if sleep_secs > 0:
-                logger.info("Próximo partido a las %s. Durmiendo %.1f minutos...", match_time.strftime("%H:%M UTC"), sleep_secs / 60)
-                time.sleep(sleep_secs)
+                logger.info("Próxima consulta del once dentro de %.0f segundos", min(sleep_secs, 120))
+                time.sleep(min(sleep_secs, 120))
+                if datetime.now(timezone.utc) < match_time:
+                    if target_match.get("espnEventId"):
+                        refresh_previews([(target_match_id, target_match)], event_documents, False)
+                    continue
             else:
                 logger.info("El partido debería haber empezado, pero ESPN aún dice 'scheduled'. Esperando 5 minutos...")
                 time.sleep(300)
@@ -213,6 +234,8 @@ def main() -> int:
         # Subir SOLO los campos de estado y goles del partido que estamos siguiendo
         if target_match_id in merged_matches:
             updated_match = merged_matches[target_match_id]
+            if updated_match.get("espnEventId") and status == "scheduled":
+                refresh_previews([(target_match_id, updated_match)], event_documents, False)
             curr_home = updated_match.get("homeGoals")
             curr_away = updated_match.get("awayGoals")
             
