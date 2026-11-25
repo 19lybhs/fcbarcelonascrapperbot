@@ -38,6 +38,7 @@ def apply_overrides(matches: dict[str, dict[str, Any]]) -> dict[str, dict[str, A
             continue
         try:
             match["scheduledAt"] = datetime.fromisoformat(iso_date)
+            match["kickoffOverridden"] = True
             logger.info("Override de hora aplicado a %s → %s", match_id, iso_date)
         except (ValueError, TypeError):
             logger.warning("Override inválido para %s: %r", match_id, iso_date)

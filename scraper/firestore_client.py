@@ -82,6 +82,7 @@ def get_firestore_client() -> firestore.firestore.Client:
 def upload_matches(
     matches: dict[str, dict[str, Any]],
     dry_run: bool = False,
+    event_documents: dict[str, str] | None = None,
 ) -> int:
     """
     Sube los partidos a Firestore usando set(merge=True).
@@ -128,15 +129,16 @@ def upload_matches(
     # minuto, solo status/goles) nunca lo incluyen, así que nos ahorramos
     # leer la colección entera en cada una de esas subidas.
     existing_rounds = {}
+    if event_documents is None:
+        event_documents = {}
     if any("round" in data for data in matches.values()):
-        try:
-            # stream() cuesta muy pocas lecturas (<50), ideal para proteger datos manuales
-            for doc in collection_ref.stream():
-                d = doc.to_dict()
-                if d and d.get("round") is not None:
-                    existing_rounds[doc.id] = d.get("round")
-        except Exception as e:
-            logger.warning("No se pudieron leer las jornadas existentes: %s", e)
+        # Si cambia el día, conservar el documento original y sus predicciones.
+        for doc in collection_ref.select(["round", "espnEventId"]).stream():
+            d = doc.to_dict()
+            if d.get("espnEventId"):
+                event_documents.setdefault(str(d["espnEventId"]), doc.id)
+            if d.get("round") is not None:
+                existing_rounds[doc.id] = d["round"]
 
     # Procesar en batches
     match_items = list(matches.items())
@@ -147,6 +149,11 @@ def upload_matches(
         batch_items = match_items[i : i + MAX_BATCH_SIZE]
 
         for match_id, data in batch_items:
+            data = dict(data)
+            if data.get("espnEventId"):
+                match_id = event_documents.setdefault(str(data["espnEventId"]), match_id)
+                if "id" in data:
+                    data["id"] = match_id
             # Proteger la jornada: si ya existe en Firestore, no la sobreescribimos jamás
             if match_id in existing_rounds and "round" in data:
                 del data["round"]

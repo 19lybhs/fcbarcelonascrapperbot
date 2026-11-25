@@ -106,7 +106,8 @@ def main() -> int:
     else:
         logger.info("🔥 Subiendo a Cloud Firestore...")
 
-    uploaded = upload_matches(merged_matches, dry_run=args.dry_run)
+    event_documents = {}
+    uploaded = upload_matches(merged_matches, dry_run=args.dry_run, event_documents=event_documents)
 
     logger.info("=" * 60)
     logger.info("✅ Finalizado: %d partidos procesados", uploaded)
@@ -232,11 +233,12 @@ def main() -> int:
             minimal_update = {
                 target_match_id: {
                     "status": updated_match.get("status"),
+                    "espnEventId": updated_match.get("espnEventId"),
                     "homeGoals": curr_home,
                     "awayGoals": curr_away
                 }
             }
-            upload_matches(minimal_update, dry_run=args.dry_run)
+            upload_matches(minimal_update, dry_run=args.dry_run, event_documents=event_documents)
 
     return 0
 

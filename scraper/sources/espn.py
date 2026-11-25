@@ -125,6 +125,8 @@ def _fetch_league_schedule(
         try:
             match = _parse_event(event, league_name)
             if match is not None:
+                match["espnLeague"] = league_slug
+                match["kickoffOverridden"] = False
                 matches.append(match)
         except Exception:
             logger.exception(
