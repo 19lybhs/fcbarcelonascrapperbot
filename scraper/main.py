@@ -27,10 +27,10 @@ import logging
 import sys
 from datetime import datetime, timezone
 
-from scraper import preview
+from scraper import preview, rival_photos
 from scraper.sources import espn, marca
 from scraper.normalizer import normalize_and_merge
-from scraper.firestore_client import save_preview, upload_matches
+from scraper.firestore_client import get_firestore_client, save_preview, upload_matches
 
 # Configuración de logging
 logging.basicConfig(
@@ -47,7 +47,12 @@ def refresh_previews(fixtures, documents, dry_run):
         try:
             fresh = preview.build(match, get, datetime.now(timezone.utc))
             if not dry_run:
-                save_preview(documents.get(fresh["eventId"], match_id), fresh)
+                document_id = documents.get(fresh["eventId"], match_id)
+                save_preview(document_id, fresh)
+                try:
+                    rival_photos.sync(match, get_firestore_client().collection("matches").document(document_id))
+                except Exception:
+                    logger.exception("Fotos pendientes para %s", document_id)
             for tid, team in fresh["teams"].items():
                 logger.info("ESPN partido %s, equipo %s: once %s, %d resultados",
                             fresh["eventId"], tid, "confirmado" if team["confirmed"] else "pendiente",
